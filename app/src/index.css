@@ -1,0 +1,26 @@
+@import "./styles/tokens.css";
+
+:root {
+  font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  color: #f1f5fc;
+  background: transparent;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-optical-sizing: auto;
+  --text-primary: var(--color-text-primary);
+  --text-secondary: var(--color-text-secondary);
+  --text-muted: var(--color-text-muted);
+  --cyan: var(--color-cyan);
+  --violet: var(--color-violet);
+  --mint: var(--color-mint);
+}
+* { box-sizing: border-box; }
+html, body { width: 100%; min-height: 100%; margin: 0; background: transparent; }
+body { overflow: hidden; }
+button { color: inherit; font: inherit; }
+button:focus-visible { outline: 2px solid #71dce8; outline-offset: 2px; }
+::selection { color: #09131f; background: #8cdeea; }

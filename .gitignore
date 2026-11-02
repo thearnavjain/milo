@@ -1,0 +1,62 @@
+# JavaScript dependencies and build output
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+playwright-report/
+test-results/
+.vite/
+.turbo/
+.cache/
+
+# Rust and Tauri build output
+target/
+app/src-tauri/target/
+app/src-tauri/gen/schemas/
+app/src-tauri/bundle/
+
+# Temporary files, logs and installer artifacts
+tmp/
+temp/
+*.tmp
+*.log
+*.msi
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Local environment and machine-specific configuration
+.env
+.env.*
+!.env.example
+*.local
+*.user
+*.suo
+.idea/
+.vscode/*.local.json
+
+# Credentials and signing material
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+credentials.json
+secrets.json
+
+# Generated non-Windows Tauri icon variants; the SVG source and Windows icons stay tracked
+app/src-tauri/icons/android/
+app/src-tauri/icons/ios/
+app/src-tauri/icons/icon.icns
+app/src-tauri/icons/icon.png
+app/src-tauri/icons/64x64.png
+app/src-tauri/icons/Square*.png
+app/src-tauri/icons/StoreLogo.png
+
+# OS metadata
+Thumbs.db
+Desktop.ini
+.DS_Store
