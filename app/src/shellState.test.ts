@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   canCollapseOnLeave,
+  canOpenOnHover,
   initialShellState,
   shouldCollapseOnEscape,
+  shouldSuppressHoverUntilLeave,
   transitionShell,
   type ShellState,
 } from "./shellState";
@@ -41,6 +43,21 @@ describe("shell interaction state", () => {
   it("keeps the panel open while an interaction is in progress", () => {
     expect(canCollapseOnLeave(openState, true)).toBe(false);
     expect(canCollapseOnLeave(openState, false)).toBe(true);
+  });
+
+  it("does not reopen a dismissed panel from hover until the pointer leaves", () => {
+    expect(canOpenOnHover(initialShellState, false)).toBe(true);
+    expect(canOpenOnHover(initialShellState, true)).toBe(false);
+    expect(canOpenOnHover(openState, false)).toBe(false);
+    expect(canOpenOnHover({ ...initialShellState, pinned: true }, false)).toBe(false);
+  });
+
+  it("suppresses hover re-entry after an intentional close only while the pointer is inside", () => {
+    expect(shouldSuppressHoverUntilLeave("escape", true)).toBe(true);
+    expect(shouldSuppressHoverUntilLeave("explicit", true)).toBe(true);
+    expect(shouldSuppressHoverUntilLeave("pointer", true)).toBe(false);
+    expect(shouldSuppressHoverUntilLeave("blur", true)).toBe(false);
+    expect(shouldSuppressHoverUntilLeave("escape", false)).toBe(false);
   });
 
   it("Escape closes an unpinned deck, while blur preserves pinning", () => {

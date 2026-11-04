@@ -21,8 +21,10 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
   canCollapseOnLeave,
+  canOpenOnHover,
   initialShellState,
   shouldCollapseOnEscape,
+  shouldSuppressHoverUntilLeave,
   transitionShell,
   type CollapseReason,
   type ShellEvent,
@@ -84,6 +86,7 @@ function App() {
   const dismissTimer = useRef<number | undefined>(undefined);
   const interactionRef = useRef(false);
   const pointerInsideRef = useRef(false);
+  const suppressHoverUntilLeaveRef = useRef(false);
   const expanded = shell.expanded;
   const panelMounted = shell.expanded || shell.phase === "closing";
 
@@ -141,6 +144,7 @@ function App() {
 
   const requestClose = useCallback((reason: CollapseReason) => {
     clearHoverTimers();
+    suppressHoverUntilLeaveRef.current = shouldSuppressHoverUntilLeave(reason, pointerInsideRef.current);
     const current = shellRef.current;
     const next = transition({ type: "CLOSE", reason });
     if (next !== current && next.phase === "closing") {
@@ -159,7 +163,10 @@ function App() {
 
   const toggleShell = useCallback(() => {
     if (shellRef.current.expanded) requestClose("explicit");
-    else requestOpen();
+    else {
+      suppressHoverUntilLeaveRef.current = false;
+      requestOpen();
+    }
   }, [requestClose, requestOpen]);
 
   const finishDeckAnimation = useCallback((event: AnimationEvent<HTMLElement>) => {
@@ -186,13 +193,14 @@ function App() {
 
   const onSurfaceEnter = () => {
     pointerInsideRef.current = true;
-    if (shellRef.current.expanded || shellRef.current.pinned) return;
+    if (!canOpenOnHover(shellRef.current, suppressHoverUntilLeaveRef.current)) return;
     window.clearTimeout(dismissTimer.current);
     hoverTimer.current = window.setTimeout(requestOpen, 150);
   };
 
   const onSurfaceLeave = () => {
     pointerInsideRef.current = false;
+    suppressHoverUntilLeaveRef.current = false;
     window.clearTimeout(hoverTimer.current);
     if (!canCollapseOnLeave(shellRef.current, interactionRef.current)) return;
     schedulePointerCollapse();
@@ -200,6 +208,7 @@ function App() {
 
   const onSurfacePointerDown = () => {
     interactionRef.current = true;
+    pointerInsideRef.current = true;
     if (!isTauri()) return;
 
     void invoke("focus_shell").catch(() => {

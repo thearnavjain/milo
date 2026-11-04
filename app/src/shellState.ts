@@ -37,6 +37,14 @@ export function canCollapseOnLeave(state: ShellState, interacting: boolean): boo
   return state.expanded && !state.pinned && !interacting;
 }
 
+export function canOpenOnHover(state: ShellState, suppressedUntilPointerLeaves: boolean): boolean {
+  return !suppressedUntilPointerLeaves && !state.expanded && !state.pinned;
+}
+
+export function shouldSuppressHoverUntilLeave(reason: CollapseReason, pointerInside: boolean): boolean {
+  return pointerInside && (reason === "escape" || reason === "explicit");
+}
+
 export function shouldCollapseOnEscape(state: ShellState, context: EscapeContext = {}): boolean {
   return state.expanded
     && !state.pinned
