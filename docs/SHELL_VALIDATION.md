@@ -28,6 +28,16 @@ This matrix is the completion gate for GitHub Issue #4. Run it on a Windows deve
 - A further Escape while already collapsed left the handle collapsed. **Pass for the collapsed-state no-op.**
 - The pointer click exercised the `focus_shell` pointer-down path, but the automation did not independently report the OS foreground-window identity. The accessibility interface reported the root MILO pane after collapse, so this run does not prove DOM focus returned specifically to the handle. Escape while pinned, from an editable control/transient layer, and during a live animation interruption was not manually tested.
 
+### Installed NSIS runtime observation — 2026-11-04
+
+- Built package: `MILO_0.1.0_x64-setup.exe` (x64, NSIS); SHA-256 `EA908B8A390AF52722D96C2F0E9BC2A9502C06428739E1EC98A527953F40CB91`.
+- The installer completed in the current user context with its default per-user location and launched MILO from the completion page. No Windows security block or unexpected permission prompt appeared. **Pass for installation and initial launch.**
+- The installed window initially showed the collapsed island; clicking the handle expanded the panel and rendered the Overview. **Pass for the basic packaged launch/expand path.**
+- The package pin control changed to `Unpin MILO`. With the island pinned, activating the harmless blank Paint window left MILO expanded. After unpinning, activating Paint and allowing the dismissal transition to settle left the island collapsed. **Pass for the tested pinned and unpinned pointer-away paths.**
+- Escape was sent while the installed panel was expanded. The immediate accessibility observation still showed the panel; a repeated Escape followed by a later observation showed the collapsed handle. This does not isolate whether the first keypress was delivered or whether the observation caught an in-flight transition. **Partial; do not treat packaged Escape as a clean pass.**
+- Repeated target-window observations later exposed only the native window node and a titlebar-sized image while the installed process remained responsive. The automation did not provide enough evidence to distinguish a capture/accessibility limitation from a runtime rendering issue. **Packaged runtime remains partial.**
+- Explicit collapse, Escape while pinned/editing/transient, focus restoration, clean exit/relaunch, and installed-package hit-testing were not conclusively completed. No second monitor or alternate scale/taskbar configuration was available. The installer SHA-256 and observations above identify the tested package; no screenshot was saved because available captures included unrelated Paint UI.
+
 ## How to run
 
 1. Record the host, monitor and taskbar configuration using the fields below.
@@ -84,8 +94,10 @@ For every row, record **Pass**, **Fail**, **Not run**, or **Blocked**. A failure
 | S3 | Partial pass | Clicking the collapsed handle expanded the panel downward and displayed the Overview interface. Exact native bounds and focus behavior were not established. |
 | S7 | Pass for explicit collapse | Explicit collapse returned the accessible control to `Expand MILO`; the MILO window remained present. |
 | S8 | Partial pass after fix | The pre-fix loose release run did not collapse on Escape. In the rebuilt development runtime, Escape collapsed the expanded panel, a following AX poll showed only the collapsed handle, MILO remained present, and Escape while collapsed was a no-op. AX reported the root pane after collapse; return of DOM focus specifically to the handle and editable/transient/pinned cases remain unverified. |
-| S10 | Partial pass | Accessible control changed from `Keep MILO open` to `Unpin MILO` and back. Pointer-leave persistence was not verified. |
-| Other cases | Not run / blocked | See host observations above. Native hit-testing, focus preservation, pointer dismissal, DPI, multi-monitor, taskbar variations, small work area, packaged installation and startup-failure behavior remain unverified. Development executable and final test executable execution were previously blocked by Application Control OS error 4551. |
+| S9 | Partial pass | In the installed runtime, moving focus/pointer to the harmless Paint title bar eventually left unpinned MILO collapsed. The transition was observed after the first accessibility poll still showed the closing panel; no recording was saved. Re-entry during the closing animation remains untested. |
+| S10 | Partial pass | Installed runtime pin control changed state; pinned MILO remained expanded when Paint was activated. After unpinning, pointer-away left it collapsed. Escape while pinned remains untested. |
+| S18 | Partial pass | The x64 NSIS package installed and launched in the current user context without an Application Control block. The installed island rendered collapsed and expanded on click; pin/pointer-away behavior was exercised. Escape timing was ambiguous, explicit collapse and relaunch/exit were not confirmed, and repeated accessibility observations later showed only the native window node. Hash and details are in the installed-runtime record above. |
+| Other cases | Not run / blocked | See host observations above. Transparent click-through, hover without activation/focus theft, return focus, Escape from editable/transient/pinned states, animation re-entry, DPI/resolution changes, multi-monitor/negative origins, small work areas, alternate taskbar placement, display-scale repositioning, and startup-failure injection remain unverified. Earlier development/test executable attempts were blocked by Application Control OS error 4551; the current installer and installed launch were allowed. |
 
 ## Issue #4 completion gate
 
