@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type AnimationEvent, type ReactNode } from "react";
 import {
   Bell,
   Check,
@@ -18,11 +18,18 @@ import {
   Wifi,
 } from "lucide-react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import {
+  canCollapseOnLeave,
+  initialShellState,
+  transitionShell,
+  type CollapseReason,
+  type ShellEvent,
+  type ShellState,
+} from "./shellState";
 import "./App.css";
 
 type Section = "Overview" | "System" | "Productivity" | "Files" | "Music" | "Settings";
-type ShellState = "collapsed" | "expanding" | "expanded" | "collapsing";
-
 const sections: { label: Section; icon: typeof Clock3 }[] = [
   { label: "Overview", icon: Clock3 },
   { label: "System", icon: Gauge },
@@ -65,82 +72,195 @@ function useLocalClock() {
 
 function App() {
   const now = useLocalClock();
-  const [shell, setShell] = useState<ShellState>("collapsed");
+  const [shell, setShell] = useState<ShellState>(initialShellState);
   const [section, setSection] = useState<Section>("Overview");
-  const [pinned, setPinned] = useState(false);
   const [nativeError, setNativeError] = useState<string | null>(null);
+  const shellRef = useRef(shell);
+  const nativeExpandedRef = useRef<boolean | null>(false);
+  const nativeQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const islandHandleRef = useRef<HTMLButtonElement>(null);
   const hoverTimer = useRef<number | undefined>(undefined);
   const dismissTimer = useRef<number | undefined>(undefined);
   const interactionRef = useRef(false);
-  const expanded = shell === "expanded" || shell === "expanding";
+  const pointerInsideRef = useRef(false);
+  const expanded = shell.expanded;
+  const panelMounted = shell.expanded || shell.phase === "closing";
+
+  const transition = useCallback((event: ShellEvent) => {
+    const next = transitionShell(shellRef.current, event);
+    shellRef.current = next;
+    setShell(next);
+    return next;
+  }, []);
 
   const clearHoverTimers = useCallback(() => {
     window.clearTimeout(hoverTimer.current);
     window.clearTimeout(dismissTimer.current);
   }, []);
 
-  const changeShell = useCallback(async (open: boolean) => {
-    clearHoverTimers();
-    if (open === expanded || shell === "expanding" || shell === "collapsing") return;
-    setShell(open ? "expanding" : "collapsing");
-    setNativeError(null);
-    try {
-      if (isTauri()) await invoke("set_shell_expanded", { expanded: open });
-      window.setTimeout(() => setShell(open ? "expanded" : "collapsed"), 280);
-    } catch {
-      setShell(open ? "collapsed" : "expanded");
-      setNativeError("MILO couldn’t reposition its desktop window. Try opening it again.");
-    }
-  }, [clearHoverTimers, expanded, shell]);
+  const queueNativeResize = useCallback(function queueNativeResize(
+    targetExpanded: boolean,
+    revision: number,
+    recovery = false,
+  ) {
+    const operation = nativeQueueRef.current.then(async () => {
+      if (nativeExpandedRef.current !== targetExpanded) {
+        if (isTauri()) {
+          await invoke("set_shell_expanded", { expanded: targetExpanded });
+        }
+        nativeExpandedRef.current = targetExpanded;
+      }
+      if (shellRef.current.revision === revision) {
+        setNativeError(null);
+      }
+    }).catch(() => {
+      nativeExpandedRef.current = null;
+      if (shellRef.current.revision !== revision) return;
 
-  const onIslandEnter = () => {
-    if (expanded || pinned) return;
+      if (recovery) {
+        setNativeError("MILO couldn’t restore its previous desktop window size. Restart MILO to retry.");
+        return;
+      }
+
+      const rollback = transition({ type: "NATIVE_FAILURE", revision, targetExpanded });
+      setNativeError("MILO couldn’t reposition its desktop window. Its previous layout has been restored where possible.");
+      void queueNativeResize(!targetExpanded, rollback.revision, true);
+    });
+    nativeQueueRef.current = operation;
+  }, [transition]);
+
+  const requestOpen = useCallback(() => {
+    clearHoverTimers();
+    const current = shellRef.current;
+    const next = transition({ type: "OPEN" });
+    if (next !== current && next.expanded) {
+      queueNativeResize(true, next.revision);
+    }
+  }, [clearHoverTimers, queueNativeResize, transition]);
+
+  const requestClose = useCallback((reason: CollapseReason) => {
+    clearHoverTimers();
+    const current = shellRef.current;
+    const next = transition({ type: "CLOSE", reason });
+    if (next !== current && next.phase === "closing") {
+      setNativeError(null);
+    }
+  }, [clearHoverTimers, transition]);
+
+  const schedulePointerCollapse = useCallback(() => {
     window.clearTimeout(dismissTimer.current);
-    hoverTimer.current = window.setTimeout(() => void changeShell(true), 150);
+    dismissTimer.current = window.setTimeout(() => {
+      if (!pointerInsideRef.current && canCollapseOnLeave(shellRef.current, interactionRef.current)) {
+        requestClose("pointer");
+      }
+    }, 480);
+  }, [requestClose]);
+
+  const toggleShell = useCallback(() => {
+    if (shellRef.current.expanded) requestClose("explicit");
+    else requestOpen();
+  }, [requestClose, requestOpen]);
+
+  const finishDeckAnimation = useCallback((event: AnimationEvent<HTMLElement>) => {
+    if (event.target !== event.currentTarget) return;
+    const current = shellRef.current;
+    if (current.phase === "opening" && event.animationName === "milo-deck-open") {
+      transition({ type: "ANIMATION_FINISHED", phase: "opening", revision: current.revision });
+      return;
+    }
+    if (current.phase === "closing" && event.animationName === "milo-deck-close") {
+      const revision = current.revision;
+      queueNativeResize(false, revision);
+      const pending = nativeQueueRef.current.then(() => {
+        if (shellRef.current.revision !== revision || shellRef.current.phase !== "closing") return;
+        const restoreFocus = shellRef.current.restoreFocus;
+        transition({ type: "CLOSE_FINISHED", revision });
+        if (restoreFocus && document.hasFocus()) {
+          window.requestAnimationFrame(() => islandHandleRef.current?.focus({ preventScroll: true }));
+        }
+      });
+      nativeQueueRef.current = pending.catch(() => undefined);
+    }
+  }, [queueNativeResize, transition]);
+
+  const onSurfaceEnter = () => {
+    pointerInsideRef.current = true;
+    if (shellRef.current.expanded || shellRef.current.pinned) return;
+    window.clearTimeout(dismissTimer.current);
+    hoverTimer.current = window.setTimeout(requestOpen, 150);
   };
 
   const onSurfaceLeave = () => {
+    pointerInsideRef.current = false;
     window.clearTimeout(hoverTimer.current);
-    if (!expanded || pinned) return;
-    dismissTimer.current = window.setTimeout(() => {
-      if (!interactionRef.current) void changeShell(false);
-    }, 480);
+    if (!canCollapseOnLeave(shellRef.current, interactionRef.current)) return;
+    schedulePointerCollapse();
   };
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && expanded) {
+      if (event.key === "Escape" && shellRef.current.expanded) {
         event.stopPropagation();
-        setPinned(false);
-        void changeShell(false);
+        requestClose("escape");
+      }
+    };
+    const onWindowBlur = () => {
+      if (canCollapseOnLeave(shellRef.current, false)) requestClose("blur");
+    };
+    const onGlobalPointerUp = () => {
+      interactionRef.current = false;
+      if (!pointerInsideRef.current && canCollapseOnLeave(shellRef.current, false)) {
+        schedulePointerCollapse();
       }
     };
     window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("blur", onWindowBlur);
+    window.addEventListener("pointerup", onGlobalPointerUp);
+    window.addEventListener("pointercancel", onGlobalPointerUp);
     return () => {
       clearHoverTimers();
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("blur", onWindowBlur);
+      window.removeEventListener("pointerup", onGlobalPointerUp);
+      window.removeEventListener("pointercancel", onGlobalPointerUp);
     };
-  }, [changeShell, expanded, pinned, clearHoverTimers]);
+  }, [clearHoverTimers, requestClose, schedulePointerCollapse]);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void listen<string>("milo://native-error", (event) => {
+      setNativeError(`MILO couldn’t adapt its desktop window to the display: ${event.payload}`);
+    }).then((stopListening) => {
+      if (cancelled) stopListening();
+      else unlisten = stopListening;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
+  const togglePin = () => {
+    const next = transition({ type: "TOGGLE_PIN" });
+    if (!next.pinned && next.expanded && !pointerInsideRef.current) schedulePointerCollapse();
+  };
 
   return (
     <main
-      className={`milo-window ${expanded ? "is-expanded" : "is-collapsed"}`}
-      onMouseEnter={expanded ? undefined : onIslandEnter}
+      className={`milo-window ${panelMounted ? "is-expanded" : "is-collapsed"}`}
+      onMouseEnter={onSurfaceEnter}
       onMouseLeave={onSurfaceLeave}
       onPointerDownCapture={() => { interactionRef.current = true; }}
-      onPointerUpCapture={() => { interactionRef.current = false; }}
-      onFocusCapture={() => { interactionRef.current = true; }}
-      onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) interactionRef.current = false;
-      }}
     >
       <button
+        ref={islandHandleRef}
         className="island-handle"
         type="button"
         aria-label={expanded ? "Collapse MILO" : "Expand MILO"}
         aria-expanded={expanded}
-        onClick={() => void changeShell(!expanded)}
-        onMouseEnter={onIslandEnter}
+        onClick={toggleShell}
       >
         <span className="brand-mark" aria-hidden="true"><span /></span>
         <span className="island-wordmark">MILO</span>
@@ -150,8 +270,12 @@ function App() {
         <ChevronDown className={`island-chevron ${expanded ? "turned" : ""}`} size={13} aria-hidden="true" />
       </button>
 
-      {expanded && (
-        <section className="deck" aria-label="MILO desktop companion">
+      {panelMounted && (
+        <section
+          className={`deck ${shell.phase === "opening" ? "is-opening" : ""} ${shell.phase === "closing" ? "is-closing" : ""}`}
+          aria-label="MILO desktop companion"
+          onAnimationEnd={finishDeckAnimation}
+        >
           <header className="deck-header">
             <div className="welcome-lockup">
               <span className="brand-mark brand-mark-small" aria-hidden="true"><span /></span>
@@ -161,13 +285,13 @@ function App() {
               </div>
             </div>
             <div className="header-actions">
-              <button className={`quiet-icon ${pinned ? "active" : ""}`} type="button" aria-label={pinned ? "Unpin MILO" : "Keep MILO open"} title={pinned ? "Unpin MILO" : "Keep open"} onClick={() => setPinned((value) => !value)}>
+              <button className={`quiet-icon ${shell.pinned ? "active" : ""}`} type="button" aria-label={shell.pinned ? "Unpin MILO" : "Keep MILO open"} title={shell.pinned ? "Unpin MILO" : "Keep open"} onClick={togglePin}>
                 <Pin size={15} />
               </button>
               <button className="quiet-icon" type="button" aria-label="Notifications" title="Notifications" disabled>
                 <Bell size={16} />
               </button>
-              <button className="quiet-icon collapse-action" type="button" aria-label="Collapse MILO" title="Collapse MILO" onClick={() => { setPinned(false); void changeShell(false); }}>
+              <button className="quiet-icon collapse-action" type="button" aria-label="Collapse MILO" title="Collapse MILO" onClick={() => requestClose("explicit")}>
                 <ChevronDown size={16} />
               </button>
             </div>

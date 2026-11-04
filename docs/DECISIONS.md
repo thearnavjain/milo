@@ -15,5 +15,5 @@ Decisions below are provisional engineering defaults unless explicitly marked lo
 | D-009 | Alarm while asleep/off | Constraint locked; delivery design open | No powered-off guarantee. Validate Windows notification bridge and document limitations. |
 | D-010 | Timer across sleep | Provisional | Continue elapsed wall-clock time; reconcile from a persisted deadline and test resume. |
 | D-011 | Lyrics provider and rights | Open | No licensed provider decision yet; keep lyrics optional and never display unverified content. |
-| D-012 | Native shell hit testing | Spike required | Prove region-aware transparent-window hit testing and non-activating behavior on Windows before claiming completion. |
+| D-012 | Native shell hit testing | Open — runtime proof required | The native region is now shaped to match the top-flush, bottom-rounded UI and CSS fills the native client bounds. Verify click-through and non-activating hover on Windows before claiming completion; the current host's Application Control policy blocks the MILO executable. |
 | D-013 | Signing and updates | Open | Do not publish as production-ready until publisher certificate, update endpoint, and updater key are supplied/configured. |

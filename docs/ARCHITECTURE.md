@@ -22,9 +22,11 @@ The UI owns presentation and short-lived form/view state. Rust owns validation, 
 
 ## Shell slice
 
-The Rust window controller sizes the transparent, borderless, topmost WebView to a compact island or a bounded deck. It uses the selected monitor's work area and scale factor, centers the window horizontally, and anchors it to the top of that area. The UI owns a single shell state and requests geometry changes through `set_shell_expanded`.
+The Rust window controller sizes the transparent, borderless, topmost WebView to a compact island or a bounded deck. It uses the window's current monitor (with a primary-monitor fallback), its work area and scale factor, centers horizontally, and anchors to the work area's top edge. Invalid/empty monitor geometry is rejected, and even very small work areas constrain the window instead of forcing a minimum that can extend off-screen. Tauri scale-factor changes trigger a geometry refresh.
 
-The native overlay's transparent-region hit testing, non-activating hover, DPI transitions, monitor hot-plug, tray/single-instance lifecycle and actual packaged behavior remain high-risk validation gates. This initial controller does not yet satisfy those native acceptance checks by itself.
+On Windows, a GDI region clips only the lower corners so the shape matches the top-attached interface. The React deck and handle fill the complete native client width; the expanded deck flexes into the remaining client height so there are no transparent gutters inside the native region. The UI state machine keeps the panel mounted through its collapse animation, serializes native resize requests, ignores stale animation completions, collapses on focus loss when unpinned, and returns keyboard focus to the collapsed handle only for explicit/Escape collapse.
+
+The Win32 region's actual click-through, non-activating hover, focus behavior, mixed-DPI runtime, monitor hot-plug/topology changes, tray/single-instance lifecycle and packaged behavior remain unverified. A display scale-factor event is handled, but Tauri does not expose a general monitor-topology notification in this implementation. Do not treat the code change or a successful build as proof of native hit-testing.
 
 ## Security baseline
 
