@@ -9,6 +9,13 @@ export interface ShellState {
   restoreFocus: boolean;
 }
 
+export interface EscapeContext {
+  defaultPrevented?: boolean;
+  composing?: boolean;
+  editingText?: boolean;
+  transientLayer?: boolean;
+}
+
 export const initialShellState: ShellState = {
   phase: "collapsed",
   expanded: false,
@@ -30,6 +37,15 @@ export function canCollapseOnLeave(state: ShellState, interacting: boolean): boo
   return state.expanded && !state.pinned && !interacting;
 }
 
+export function shouldCollapseOnEscape(state: ShellState, context: EscapeContext = {}): boolean {
+  return state.expanded
+    && !state.pinned
+    && !context.defaultPrevented
+    && !context.composing
+    && !context.editingText
+    && !context.transientLayer;
+}
+
 export function transitionShell(state: ShellState, event: ShellEvent): ShellState {
   switch (event.type) {
     case "OPEN": {
@@ -49,7 +65,10 @@ export function transitionShell(state: ShellState, event: ShellEvent): ShellStat
         ? transitionShell(state, { type: "CLOSE", reason: "explicit" })
         : transitionShell(state, { type: "OPEN" });
     case "CLOSE": {
-      if (!state.expanded || (state.pinned && (event.reason === "pointer" || event.reason === "blur"))) {
+      if (
+        !state.expanded
+        || (state.pinned && (event.reason === "pointer" || event.reason === "blur" || event.reason === "escape"))
+      ) {
         return state;
       }
       return {

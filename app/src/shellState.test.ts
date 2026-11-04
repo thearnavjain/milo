@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canCollapseOnLeave,
   initialShellState,
+  shouldCollapseOnEscape,
   transitionShell,
   type ShellState,
 } from "./shellState";
@@ -42,13 +43,47 @@ describe("shell interaction state", () => {
     expect(canCollapseOnLeave(openState, false)).toBe(true);
   });
 
-  it("Escape closes and unpins, while blur preserves pinning", () => {
+  it("Escape closes an unpinned deck, while blur preserves pinning", () => {
     const pinned = transitionShell(openState, { type: "TOGGLE_PIN" });
-    const escaped = transitionShell(pinned, { type: "CLOSE", reason: "escape" });
+    const escaped = transitionShell(openState, { type: "CLOSE", reason: "escape" });
     expect(escaped).toMatchObject({ phase: "closing", expanded: false, pinned: false, restoreFocus: true });
 
     const blurred = transitionShell(pinned, { type: "CLOSE", reason: "blur" });
     expect(blurred).toBe(pinned);
+    expect(transitionShell(pinned, { type: "CLOSE", reason: "escape" })).toBe(pinned);
+  });
+
+  it("handles Escape only for an expanded, unpinned deck with no competing owner", () => {
+    expect(shouldCollapseOnEscape(openState)).toBe(true);
+    expect(shouldCollapseOnEscape(initialShellState)).toBe(false);
+    expect(shouldCollapseOnEscape({ ...openState, pinned: true })).toBe(false);
+    expect(shouldCollapseOnEscape(openState, { defaultPrevented: true })).toBe(false);
+    expect(shouldCollapseOnEscape(openState, { composing: true })).toBe(false);
+    expect(shouldCollapseOnEscape(openState, { editingText: true })).toBe(false);
+    expect(shouldCollapseOnEscape(openState, { transientLayer: true })).toBe(false);
+  });
+
+  it("ignores repeated Escape after a close starts and does not quit the shell", () => {
+    const closing = transitionShell(openState, { type: "CLOSE", reason: "escape" });
+    expect(shouldCollapseOnEscape(closing)).toBe(false);
+    expect(transitionShell(closing, { type: "CLOSE", reason: "escape" })).toBe(closing);
+    expect(closing).toMatchObject({ phase: "closing", expanded: false });
+  });
+
+  it("closes during opening and ignores stale animation completion", () => {
+    const opening = transitionShell(initialShellState, { type: "OPEN" });
+    expect(shouldCollapseOnEscape(opening)).toBe(true);
+
+    const closing = transitionShell(opening, { type: "CLOSE", reason: "escape" });
+    expect(closing).toMatchObject({ phase: "closing", expanded: false, restoreFocus: true });
+    expect(
+      transitionShell(closing, {
+        type: "ANIMATION_FINISHED",
+        phase: "opening",
+        revision: opening.revision,
+      }),
+    ).toBe(closing);
+    expect(shouldCollapseOnEscape(closing)).toBe(false);
   });
 
   it("ignores stale animation completions during rapid state changes", () => {

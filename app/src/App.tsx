@@ -22,6 +22,7 @@ import { listen } from "@tauri-apps/api/event";
 import {
   canCollapseOnLeave,
   initialShellState,
+  shouldCollapseOnEscape,
   transitionShell,
   type CollapseReason,
   type ShellEvent,
@@ -197,12 +198,36 @@ function App() {
     schedulePointerCollapse();
   };
 
+  const onSurfacePointerDown = () => {
+    interactionRef.current = true;
+    if (!isTauri()) return;
+
+    void invoke("focus_shell").catch(() => {
+      setNativeError("MILO couldn’t receive keyboard focus. Try clicking the island again.");
+    });
+  };
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && shellRef.current.expanded) {
-        event.stopPropagation();
-        requestClose("escape");
-      }
+      if (event.key !== "Escape") return;
+
+      const target = event.target instanceof Element ? event.target : null;
+      const escapeContext = {
+        defaultPrevented: event.defaultPrevented,
+        composing: event.isComposing,
+        editingText: Boolean(target && (
+          (target instanceof HTMLElement && target.isContentEditable)
+          || target.matches("input, textarea, select")
+        )),
+        transientLayer: Boolean(target?.closest(
+          '[role="dialog"], [role="menu"], [role="listbox"], [role="combobox"], [data-escape-owner]',
+        )),
+      };
+      if (!shouldCollapseOnEscape(shellRef.current, escapeContext)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      requestClose("escape");
     };
     const onWindowBlur = () => {
       if (canCollapseOnLeave(shellRef.current, false)) requestClose("blur");
@@ -252,7 +277,7 @@ function App() {
       className={`milo-window ${panelMounted ? "is-expanded" : "is-collapsed"}`}
       onMouseEnter={onSurfaceEnter}
       onMouseLeave={onSurfaceLeave}
-      onPointerDownCapture={() => { interactionRef.current = true; }}
+      onPointerDownCapture={onSurfacePointerDown}
     >
       <button
         ref={islandHandleRef}

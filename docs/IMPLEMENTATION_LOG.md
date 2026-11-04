@@ -93,3 +93,22 @@ Issue #4 remains open. The code and deterministic tests are in place, but the is
 ### Gate status
 
 Issue #4 remains open and the shell completion gate has **not** passed. First reproduce/fix the Escape collapse failure in an appropriately trusted Windows environment, then complete the remaining focus, hit-testing, pointer, display, and packaged-runtime cases in [SHELL_VALIDATION.md](SHELL_VALIDATION.md). Do not start the task-list persistence vertical slice until the shell gate is satisfied.
+
+## 2026-11-04 — Escape-to-collapse focus fix
+
+### Root cause and change
+
+- The shell's Escape listener is renderer-local, but the native startup window is configured with `focus: false` so hover expansion can preserve the foreground application's keyboard focus. Pointer interaction had no explicit native focus request; therefore visible expansion did not guarantee that Escape would be delivered to MILO's WebView. This code-path gap is consistent with the earlier live failure. Escape was not lost in the state reducer: once dispatched, its close transition already existed.
+- Added a narrowly scoped `focus_shell` Tauri command and invoke it only from MILO's pointer-down path. Hover-only expansion still does not request focus. No Tauri plugin permissions were added.
+- Escape handling now leaves default-prevented/composing events, editable text controls, and transient-layer owners to their existing handlers. A pinned deck ignores Escape per the PRD rule that Escape dismisses an unpinned deck. Repeated Escape is idempotent through the existing revisioned transition model.
+
+### Verification
+
+- Frontend: `corepack pnpm typecheck`, `corepack pnpm lint`, `corepack pnpm test` (10 tests), and `corepack pnpm build` — passed.
+- Rust: `cargo fmt --check --manifest-path src-tauri/Cargo.toml`, `cargo check --manifest-path src-tauri/Cargo.toml`, and `cargo test --manifest-path src-tauri/Cargo.toml` (6 tests) — passed. This test run was not blocked by Application Control.
+- Live: `corepack pnpm tauri dev` rebuilt and launched successfully. A pointer click on the collapsed handle followed by Escape collapsed the panel; the next accessibility poll showed only the collapsed handle and MILO's window remained present. This exercised the `focus_shell` pointer-down path. A keyboard-targeted Escape on an expanded panel also collapsed it; Escape while collapsed was a no-op. The automation did not independently identify the OS foreground window, and AX reported the root pane after collapse, so native foreground ownership and focus restoration specifically to the handle remain unverified.
+- Vite emitted an IPC custom-protocol fetch warning and fell back to Tauri postMessage transport; the app rendered and accepted the tested Escape key. No security control was bypassed.
+
+### Remaining validation
+
+Issue #4 remains open. The live Escape path passed in the rebuilt dev runtime, but the pointer-down `focus_shell` command, focus return, Escape in an editable/transient/pinned state, native click-through, unrelated-app focus preservation, pointer dismissal, DPI/multi-monitor/taskbar cases, and installed NSIS runtime remain unverified. Continue with [SHELL_VALIDATION.md](SHELL_VALIDATION.md); do not close Issue #4 based only on this focused fix.

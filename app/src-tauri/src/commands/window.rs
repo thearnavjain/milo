@@ -15,3 +15,13 @@ pub fn set_shell_expanded(
     shell_state.store(expanded, Ordering::Release);
     Ok(geometry)
 }
+
+#[tauri::command]
+pub fn focus_shell(app: AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "WINDOW_UNAVAILABLE".to_owned())?;
+    window
+        .set_focus()
+        .map_err(|_| "WINDOW_FOCUS_FAILED".to_owned())
+}

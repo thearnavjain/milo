@@ -34,7 +34,8 @@ pub fn run() -> tauri::Result<()> {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::window::set_shell_expanded
+            commands::window::set_shell_expanded,
+            commands::window::focus_shell
         ])
         .run(tauri::generate_context!())
 }
