@@ -74,3 +74,22 @@ Issue #4 remains open. The code and deterministic tests are in place, but the is
 - Run the documented native shell matrix, including transparent corners, focus preservation, click activation, pointer/keyboard dismissal, pinning, and rapid transitions.
 - Validate mixed-DPI and monitor topology transitions, top-taskbar work areas, and the installed NSIS runtime.
 - Resolve the Windows minimum-version conflict in D-006 before publishing compatibility claims.
+
+## 2026-11-04 — Issue #4 runtime handover
+
+### Repository and GitHub
+
+- Verified the clean `main` branch at `af893a055840a4c8ba592104d1d4149f37b7ad20`, with `origin` pointing to `https://github.com/thearnavjain/milo`. Pushed the existing shell-hardening commit without rewriting history; local `main`, `origin/main`, and the remote branch now resolve to the same commit.
+- Updated the existing Issue #4 implementation comment to record the push. Issue #4 remains open.
+
+### Runtime observations
+
+- Launched the already-built loose release executable through the Windows UI. The collapsed island appeared at the top center of the single available display; clicking the handle expanded the panel downward and rendered the Overview content. This was a basic live UI observation, not validation of native geometry or focus.
+- Explicit collapse returned the accessibility control to `Expand MILO` while the window remained present. The pin control toggled from `Keep MILO open` to `Unpin MILO` and back. Escape was sent while expanded, but the next accessibility tree still showed the expanded panel; this attempt is recorded as a failure, not a pass. Focus was reported on MILO's root pane rather than a specific interactive control.
+- A safe, reliable outside-window pointer/focus test could not be completed: UI automation lost valid coordinate geometry while the overlay covered the second window. No result is claimed for pointer dismissal or pin persistence after pointer leave.
+- The development executable and final Rust test executable remain blocked by Windows Application Control (OS error 4551). No policy was bypassed or changed. Only one display was available; multi-monitor/negative-origin, DPI transitions, small work area, alternate taskbar placement, exact Tauri work-area geometry, installed NSIS runtime, and startup-failure injection were not tested.
+- Expanded [SHELL_VALIDATION.md](SHELL_VALIDATION.md) into an actionable 19-case handover with action, expected result, failure signal, evidence fields, observed outcomes, and the Issue #4 gate.
+
+### Gate status
+
+Issue #4 remains open and the shell completion gate has **not** passed. First reproduce/fix the Escape collapse failure in an appropriately trusted Windows environment, then complete the remaining focus, hit-testing, pointer, display, and packaged-runtime cases in [SHELL_VALIDATION.md](SHELL_VALIDATION.md). Do not start the task-list persistence vertical slice until the shell gate is satisfied.
